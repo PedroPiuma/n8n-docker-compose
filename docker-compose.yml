@@ -1,0 +1,37 @@
+services:
+  n8n:
+    image: docker.n8n.io/n8nio/n8n
+    container_name: n8n
+    environment:
+      - N8N_HOST=n8n.local
+      - WEBHOOK_URL=https://n8n.local:5678
+      - N8N_PROTOCOL=https
+      - N8N_PORT=5678
+      - N8N_SECURE_COOKIE=true
+    volumes:
+      - n8n_data:/home/node/.n8n
+    expose:
+      - "5678"
+    networks:
+      - dev_network
+
+  caddy:
+    image: caddy:alpine
+    container_name: caddy
+    ports:
+      - "5678:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile
+      - ./certs:/certs
+    depends_on:
+      - n8n
+    networks:
+      - dev_network
+
+volumes:
+  n8n_data:
+
+networks:
+  dev_network:
+    name: docker-sm_dev_network
+    external: true
