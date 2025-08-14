@@ -4,7 +4,7 @@ services:
     container_name: n8n
     environment:
       - N8N_HOST=n8n.local
-      - WEBHOOK_URL=https://n8n.local:5678
+      - WEBHOOK_URL=${WEBHOOK_URL}
       - N8N_PROTOCOL=https
       - N8N_PORT=5678
       - N8N_SECURE_COOKIE=true
@@ -33,5 +33,5 @@ volumes:
 
 networks:
   dev_network:
-    name: docker-sm_dev_network
-    external: true
+    name: ${DOCKER_NETWORK_NAME}
+    external: ${DOCKER_NETWORK_EXTERNAL}

@@ -1,0 +1,76 @@
+#!/bin/bash
+
+# Diretório onde os comandos estão armazenados (resolve caminho real mesmo via symlink)
+SCRIPT_PATH="$(readlink -f "${BASH_SOURCE[0]}")"
+SCRIPT_DIR="$(cd "$(dirname "$SCRIPT_PATH")" && pwd)"
+COMMANDS_DIR="$SCRIPT_DIR/scripts"
+
+# Nome do comando global
+COMMAND_NAME="n8n"
+
+# Verificar e opcionalmente configurar o comando global (symlink em /usr/local/bin)
+if ! command -v "$COMMAND_NAME" >/dev/null 2>&1; then
+  echo "ℹ️  O comando '$COMMAND_NAME' ainda não está configurado globalmente."
+  echo "Configurando automaticamente para uso global (pode solicitar sudo)..."
+  if sudo ln -sf "$SCRIPT_PATH" "/usr/local/bin/$COMMAND_NAME" 2>/dev/null; then
+    echo "✅ '$COMMAND_NAME' foi configurado globalmente com sucesso."
+  else
+    echo "❌ Não foi possível criar o link em /usr/local/bin."
+    echo "Adicionando o diretório ao PATH apenas nesta sessão..."
+    export PATH="$PATH:$SCRIPT_DIR"
+  fi
+fi
+
+# Verificar se o diretório de comandos existe
+if [ ! -d "$COMMANDS_DIR" ]; then
+  echo "❌ Erro: O diretório '$COMMANDS_DIR' não existe."
+  echo "Caminho esperado: $COMMANDS_DIR"
+  exit 1
+fi
+
+show_help() {
+  echo "Uso: $COMMAND_NAME [comando] [opções]"
+  echo ""
+  echo "Comandos disponíveis:"
+  echo "  - up       Sobe os serviços (docker compose up -d)"
+  echo "  - down     Derruba os serviços (docker compose down)"
+  echo "  - shell    Abre um shell no container n8n (bash/sh)"
+  echo "  - update   Atualiza n8n com backup (scripts/update.sh)"
+  echo "  - restore  Restaura backup (scripts/restore_backup.sh)"
+  echo ""
+  echo "Exemplos:"
+  echo "  $COMMAND_NAME up"
+  echo "  $COMMAND_NAME down"
+  echo "  $COMMAND_NAME shell"
+  echo "  $COMMAND_NAME update"
+  echo "  $COMMAND_NAME restore"
+}
+
+# Verificar se o usuário forneceu um comando
+if [ $# -eq 0 ]; then
+  show_help
+  exit 0
+fi
+
+ORIG_CMD="$1"
+COMMAND_FILE="$COMMANDS_DIR/$ORIG_CMD"
+
+# Resolver comando: suporta arquivo sem extensão e com .sh e alias 'restore' -> restore_backup.sh
+if [ ! -f "$COMMAND_FILE" ]; then
+  if [ -f "$COMMANDS_DIR/${ORIG_CMD}.sh" ]; then
+    COMMAND_FILE="$COMMANDS_DIR/${ORIG_CMD}.sh"
+  elif [ "$ORIG_CMD" = "restore" ] && [ -f "$COMMANDS_DIR/restore_backup.sh" ]; then
+    COMMAND_FILE="$COMMANDS_DIR/restore_backup.sh"
+  else
+    echo "❌ Erro: Comando '$ORIG_CMD' não encontrado."
+    show_help
+    exit 1
+  fi
+fi
+
+# Executar o comando com os argumentos fornecidos
+shift # remove o nome do comando
+"$COMMAND_FILE" "$@" || {
+  echo "❌ Erro ao executar o comando '$ORIG_CMD'."
+  exit 1
+}
