@@ -2,3 +2,4 @@
 *.env
 backups/n8n*
 backups/.env*
+docs/templates/*.json

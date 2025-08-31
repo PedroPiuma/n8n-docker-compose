@@ -1,4 +1,0 @@
-n8n.local:443 {
-  tls /certs/n8n.local.pem /certs/n8n.local-key.pem
-  reverse_proxy n8n:5678
-}
