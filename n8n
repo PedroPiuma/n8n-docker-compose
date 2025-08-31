@@ -37,6 +37,7 @@ show_help() {
   echo "  - shell    Abre um shell no container n8n (bash/sh)"
   echo "  - update   Atualiza n8n com backup (scripts/update.sh)"
   echo "  - restore  Restaura backup (scripts/restore_backup.sh)"
+  echo "  - redis    Gerencia o Redis (scripts/redis-manager.sh)"
   echo ""
   echo "Exemplos:"
   echo "  $COMMAND_NAME up"
@@ -44,6 +45,7 @@ show_help() {
   echo "  $COMMAND_NAME shell"
   echo "  $COMMAND_NAME update"
   echo "  $COMMAND_NAME restore"
+  echo "  $COMMAND_NAME redis [comando]"
 }
 
 # Verificar se o usuário forneceu um comando
@@ -61,6 +63,8 @@ if [ ! -f "$COMMAND_FILE" ]; then
     COMMAND_FILE="$COMMANDS_DIR/${ORIG_CMD}.sh"
   elif [ "$ORIG_CMD" = "restore" ] && [ -f "$COMMANDS_DIR/restore_backup.sh" ]; then
     COMMAND_FILE="$COMMANDS_DIR/restore_backup.sh"
+  elif [ "$ORIG_CMD" = "redis" ] && [ -f "$COMMANDS_DIR/redis-manager.sh" ]; then
+    COMMAND_FILE="$COMMANDS_DIR/redis-manager.sh"
   else
     echo "❌ Erro: Comando '$ORIG_CMD' não encontrado."
     show_help
