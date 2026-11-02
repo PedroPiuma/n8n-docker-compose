@@ -1,0 +1,176 @@
+name: n8n-docker-compose
+
+services:
+  n8n:
+    image: n8nio/n8n:latest
+    container_name: n8n
+    restart: unless-stopped
+    environment:
+      - N8N_HOST=${N8N_HOST:-localhost}
+      - N8N_PORT=5678
+      - N8N_PROTOCOL=${N8N_PROTOCOL:-http}
+      - WEBHOOK_URL=${N8N_WEBHOOK_URL:-http://localhost:${N8N_PORT:-${N8N_EXPOSE_PORT:-5678}}/}
+      - N8N_SECURE_COOKIE=false
+      - GENERIC_TIMEZONE=${TZ:-America/Sao_Paulo}
+      - TZ=${TZ:-America/Sao_Paulo}
+      - N8N_LOG_LEVEL=${N8N_LOG_LEVEL:-info}
+      - N8N_COMMUNITY_PACKAGES_ALLOW_TOOL_USAGE=true
+      - NODE_OPTIONS=--max-old-space-size=768
+      # Banco de dados
+      - DB_TYPE=postgresdb
+      - DB_POSTGRESDB_HOST=postgres
+      - DB_POSTGRESDB_PORT=5432
+      - DB_POSTGRESDB_DATABASE=${POSTGRES_DB:-n8n}
+      - DB_POSTGRESDB_USER=${POSTGRES_USER:-postgres}
+      - DB_POSTGRESDB_PASSWORD=${POSTGRES_PASSWORD:-postgres}
+      # Proteção contra rajadas de webhook do WAHA
+      - N8N_CONCURRENCY_PRODUCTION_LIMIT=${N8N_CONCURRENCY_PRODUCTION_LIMIT:-5}
+      - EXECUTIONS_DATA_SAVE_ON_SUCCESS=${EXECUTIONS_DATA_SAVE_ON_SUCCESS:-none}
+      - EXECUTIONS_DATA_SAVE_ON_PROGRESS=false
+      - EXECUTIONS_DATA_PRUNE=true
+      - EXECUTIONS_DATA_MAX_AGE=${EXECUTIONS_DATA_MAX_AGE:-168}
+    ports:
+      - "${N8N_PORT:-${N8N_EXPOSE_PORT:-5678}}:5678"
+    volumes:
+      - n8n_data:/home/node/.n8n
+    networks:
+      - dev_network
+    depends_on:
+      postgres:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 1024M
+        reservations:
+          memory: 256M
+
+  redis:
+    image: redis:alpine
+    container_name: n8n_redis
+    restart: unless-stopped
+    command: redis-server --requirepass ${REDIS_PASSWORD:-default} --maxmemory 200mb --maxmemory-policy allkeys-lru
+    environment:
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-default}
+    ports:
+      - "${REDIS_PORT:-${REDIS_EXPOSE_PORT:-6379}}:6379"
+    volumes:
+      - n8n_redis_data:/data
+    networks:
+      - dev_network
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+        reservations:
+          memory: 64M
+
+  postgres:
+    image: postgres:18-alpine
+    container_name: n8n_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-n8n}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+    ports:
+      - "${POSTGRES_PORT:-${POSTGRES_EXPOSE_PORT:-5433}}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql
+    networks:
+      - dev_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h localhost -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    deploy:
+      resources:
+        limits:
+          memory: 1024M
+        reservations:
+          memory: 128M
+
+  waha:
+    image: devlikeapro/waha:latest
+    container_name: n8n_waha
+    restart: unless-stopped
+    environment:
+      # Webhook - configurado por sessão (Dashboard ou PUT /api/sessions/{session})
+      # Um hook global aqui soma com o da sessão e duplica as entregas no n8n.
+
+      # Filtros de eventos na origem (a sessão pode sobrescrever em config.ignore)
+      WAHA_SESSION_CONFIG_IGNORE_STATUS: ${WAHA_IGNORE_STATUS:-true}
+      WAHA_SESSION_CONFIG_IGNORE_GROUPS: ${WAHA_IGNORE_GROUPS:-false}
+      WAHA_SESSION_CONFIG_IGNORE_CHANNELS: ${WAHA_IGNORE_CHANNELS:-true}
+      WAHA_SESSION_CONFIG_IGNORE_BROADCAST: ${WAHA_IGNORE_BROADCAST:-true}
+
+      # Mídia baixada para os eventos (só o que o workflow consome)
+      WAHA_EVENTS_DOWNLOAD_MEDIA_MIMETYPES: ${WAHA_EVENTS_DOWNLOAD_MEDIA_MIMETYPES:-image/jpeg}
+
+      # Engine
+      WHATSAPP_DEFAULT_ENGINE: ${WHATSAPP_DEFAULT_ENGINE:-GOWS}
+
+      # Sessions - Storage em PostgreSQL (o WAHA cria os próprios bancos waha_*)
+      WHATSAPP_SESSIONS_POSTGRESQL_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/postgres?sslmode=disable
+
+      # Sessions - Auto restart
+      WHATSAPP_RESTART_ALL_SESSIONS: "true"
+      WAHA_WORKER_RESTART_SESSIONS: "true"
+      WAHA_AUTO_START_DELAY_SECONDS: 1
+      WAHA_WORKER_ID: waha1
+
+      # Apps & Redis
+      WAHA_APPS_ENABLED: "true"
+      REDIS_URL: redis://:${REDIS_PASSWORD:-default}@redis:6379
+      WAHA_API_KEY_PLAIN: ${WAHA_API_KEY:-admin}
+      WAHA_API_KEY: ${WAHA_API_KEY:-admin}
+
+      # Dashboard
+      WAHA_DASHBOARD_ENABLED: "true"
+      WAHA_DASHBOARD_USERNAME: ${WAHA_DASHBOARD_USERNAME:-admin}
+      WAHA_DASHBOARD_PASSWORD: ${WAHA_DASHBOARD_PASSWORD:-admin123}
+
+      # Swagger
+      WHATSAPP_SWAGGER_ENABLED: "true"
+      WHATSAPP_SWAGGER_USERNAME: ${WHATSAPP_SWAGGER_USERNAME:-admin}
+      WHATSAPP_SWAGGER_PASSWORD: ${WHATSAPP_SWAGGER_PASSWORD:-admin123}
+
+      # Storage local
+      WAHA_LOCAL_STORE_BASE_DIR: /app/.sessions
+
+      # Timezone e Logs
+      TZ: ${TZ:-America/Sao_Paulo}
+      WAHA_LOG_LEVEL: ${WAHA_LOG_LEVEL:-info}
+      WAHA_LOG_FORMAT: PRETTY
+
+      # Files
+      WHATSAPP_FILES_FOLDER: /app/.media
+      WHATSAPP_FILES_LIFETIME: 3600
+    ports:
+      - "${WAHA_PORT:-${WAHA_EXPOSE_PORT:-3008}}:3000"
+    volumes:
+      - n8n_waha_sessions:/app/.sessions
+      - n8n_waha_media:/app/.media
+    networks:
+      - dev_network
+    depends_on:
+      - postgres
+      - redis
+    deploy:
+      resources:
+        limits:
+          memory: 1024M
+        reservations:
+          memory: 256M
+
+volumes:
+  n8n_data:
+  n8n_waha_sessions:
+  n8n_waha_media:
+  n8n_redis_data:
+  postgres_data:
+
+networks:
+  dev_network:
+    name: ${DOCKER_NETWORK_NAME:-dev_network}
